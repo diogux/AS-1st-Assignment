@@ -36,7 +36,7 @@ RUN chmod 775 App_Data \
 FROM mcr.microsoft.com/dotnet/aspnet:9.0-alpine AS runtime 
 
 # add globalization support
-RUN apk add --no-cache icu-libs icu-data-full
+RUN apk add --no-cache icu-libs 
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
 # installs required packages
