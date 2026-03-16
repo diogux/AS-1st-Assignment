@@ -112,6 +112,9 @@ public static class ServiceCollectionExtensions
         //bind plugins configurations
         services.BindApplicationSettings(builder);
 
+        //add OpenTelemetry
+        services.AddNopOpenTelemetry(builder.Configuration);
+
         //create engine and configure service provider
         var engine = EngineContext.Create();
 
