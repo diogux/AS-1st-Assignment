@@ -2,6 +2,7 @@
 using Newtonsoft.Json;
 using Nop.Core;
 using Nop.Core.Caching;
+using Nop.Core.Infrastructure;
 using Nop.Core.Domain.Catalog;
 using Nop.Core.Domain.Common;
 using Nop.Core.Domain.Customers;
@@ -1377,39 +1378,64 @@ public partial class OrderProcessingService : IOrderProcessingService
     /// </returns>
     protected virtual async Task<ProcessPaymentResult> GetProcessPaymentResultAsync(ProcessPaymentRequest processPaymentRequest, PlaceOrderContainer details)
     {
-        //process payment
-        ProcessPaymentResult processPaymentResult;
-        //check if is payment workflow required
-        if (await IsPaymentWorkflowRequiredAsync(details.Cart))
+        using var activity = NopMonitoring.ActivitySource.StartActivity("ProcessPayment");
+        activity?.SetTag("payment.method", processPaymentRequest.PaymentMethodSystemName);
+        activity?.SetTag("store.id", processPaymentRequest.StoreId);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
         {
-            var customer = await _customerService.GetCustomerByIdAsync(processPaymentRequest.CustomerId);
-            var paymentMethod = await _paymentPluginManager
-                                    .LoadPluginBySystemNameAsync(processPaymentRequest.PaymentMethodSystemName, customer, processPaymentRequest.StoreId)
-                                ?? throw new NopException("Payment method couldn't be loaded");
-
-            //ensure that payment method is active
-            if (!_paymentPluginManager.IsPluginActive(paymentMethod))
-                throw new NopException("Payment method is not active");
-
-            if (details.IsRecurringShoppingCart)
+            //process payment
+            ProcessPaymentResult processPaymentResult;
+            //check if is payment workflow required
+            if (await IsPaymentWorkflowRequiredAsync(details.Cart))
             {
-                //recurring cart
-                processPaymentResult = (await _paymentService.GetRecurringPaymentTypeAsync(processPaymentRequest.PaymentMethodSystemName)) switch
+                var customer = await _customerService.GetCustomerByIdAsync(processPaymentRequest.CustomerId);
+                var paymentMethod = await _paymentPluginManager
+                                        .LoadPluginBySystemNameAsync(processPaymentRequest.PaymentMethodSystemName, customer, processPaymentRequest.StoreId)
+                                    ?? throw new NopException("Payment method couldn't be loaded");
+
+                //ensure that payment method is active
+                if (!_paymentPluginManager.IsPluginActive(paymentMethod))
+                    throw new NopException("Payment method is not active");
+
+                if (details.IsRecurringShoppingCart)
                 {
-                    RecurringPaymentType.NotSupported => throw new NopException("Recurring payments are not supported by selected payment method"),
-                    RecurringPaymentType.Manual or
-                        RecurringPaymentType.Automatic => await _paymentService.ProcessRecurringPaymentAsync(processPaymentRequest),
-                    _ => throw new NopException("Not supported recurring payment type"),
-                };
+                    //recurring cart
+                    processPaymentResult = (await _paymentService.GetRecurringPaymentTypeAsync(processPaymentRequest.PaymentMethodSystemName)) switch
+                    {
+                        RecurringPaymentType.NotSupported => throw new NopException("Recurring payments are not supported by selected payment method"),
+                        RecurringPaymentType.Manual or
+                            RecurringPaymentType.Automatic => await _paymentService.ProcessRecurringPaymentAsync(processPaymentRequest),
+                        _ => throw new NopException("Not supported recurring payment type"),
+                    };
+                }
+                else
+                    //standard cart
+                    processPaymentResult = await _paymentService.ProcessPaymentAsync(processPaymentRequest);
             }
             else
-                //standard cart
-                processPaymentResult = await _paymentService.ProcessPaymentAsync(processPaymentRequest);
+                //payment is not required
+                processPaymentResult = new ProcessPaymentResult { NewPaymentStatus = PaymentStatus.Paid };
+
+
+            if (!processPaymentResult.Success)
+            {
+                NopMonitoring.PaymentFailures.Add(1,
+                    new KeyValuePair<string, object>("payment_method", processPaymentRequest.PaymentMethodSystemName),
+                    new KeyValuePair<string, object>("store_id", processPaymentRequest.StoreId));
+            }
+            
+            activity?.SetTag("payment.success", processPaymentResult.Success);
+            return processPaymentResult;
         }
-        else
-            //payment is not required
-            processPaymentResult = new ProcessPaymentResult { NewPaymentStatus = PaymentStatus.Paid };
-        return processPaymentResult;
+        finally
+        {
+            sw.Stop();
+            NopMonitoring.PaymentGatewayLatency.Record(sw.ElapsedMilliseconds,
+                new KeyValuePair<string, object>("payment_method", processPaymentRequest.PaymentMethodSystemName),
+                new KeyValuePair<string, object>("store_id", processPaymentRequest.StoreId));
+        }
     }
 
     /// <summary>
@@ -1556,6 +1582,10 @@ public partial class OrderProcessingService : IOrderProcessingService
     /// </returns>
     public virtual async Task<PlaceOrderResult> PlaceOrderAsync(ProcessPaymentRequest processPaymentRequest)
     {
+        using var activity = NopMonitoring.ActivitySource.StartActivity("PlaceOrder");
+        activity?.SetTag("store.id", processPaymentRequest.StoreId);
+        activity?.SetTag("customer.id", processPaymentRequest.CustomerId);
+
         ArgumentNullException.ThrowIfNull(processPaymentRequest);
 
         if (processPaymentRequest.OrderGuid == Guid.Empty)
@@ -1563,6 +1593,9 @@ public partial class OrderProcessingService : IOrderProcessingService
 
         //prepare order details
         var details = await PreparePlaceOrderDetailsAsync(processPaymentRequest);
+        
+        // Track the order total in the span
+        activity?.SetTag("order.total", details.OrderTotal);
 
         async Task<PlaceOrderResult> placeOrder(PlaceOrderContainer placeOrderContainer)
         {
@@ -1579,6 +1612,14 @@ public partial class OrderProcessingService : IOrderProcessingService
                     var order = await SaveOrderDetailsAsync(processPaymentRequest, processPaymentResult,
                         placeOrderContainer);
                     result.PlacedOrder = order;
+
+                    activity?.SetTag("order.id", order.Id);
+                    activity?.SetTag("order.number", order.CustomOrderNumber);
+
+                    // Record business metric: Order Value
+                    NopMonitoring.OrderValueProcessed.Record((double)order.OrderTotal, 
+                        new KeyValuePair<string, object>("store_id", order.StoreId),
+                        new KeyValuePair<string, object>("payment_method", order.PaymentMethodSystemName));
 
                     //move shopping cart items to order items
                     await MoveShoppingCartItemsToOrderItemsAsync(placeOrderContainer, order);
