@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Nop.Core.Infrastructure;
 using OpenTelemetry.Metrics;
@@ -28,14 +28,15 @@ public static class OpenTelemetryServiceCollectionExtensions
                 tracing
                     .SetResourceBuilder(resourceBuilder)
                     .AddSource(NopMonitoring.ActivitySourceName)
-                    .AddAspNetCoreInstrumentation(options =>
-                    {
-                        options.EnrichWithHttpRequest = (activity, request) =>
-                        {
-                            // i dont think this is necessary
-                            activity.SetTag("http.status_code", request.StatusCode);
-                        };
-                    })
+                    .AddAspNetCoreInstrumentation()
+                    /*options =>*/
+                    /*{*/
+                    /*    options.EnrichWithHttpRequest = (activity, request) =>*/
+                    /*    {*/
+                    /*        // i dont think this is necessary*/
+                    /*        activity.SetTag("http.status_code", request.StatusCode);*/
+                    /*    };*/
+                    /*})*/
                     .AddHttpClientInstrumentation()
                     .AddSqlClientInstrumentation()
                     .AddOtlpExporter(options =>
