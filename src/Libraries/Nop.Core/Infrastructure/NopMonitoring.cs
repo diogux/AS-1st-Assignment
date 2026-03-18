@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
 namespace Nop.Core.Infrastructure;
@@ -14,20 +14,19 @@ public static class NopMonitoring
     public static readonly ActivitySource ActivitySource = new(ActivitySourceName);
     public static readonly Meter Meter = new(MeterName);
 
-    // "business" metric 
-    public static readonly Histogram<double> OrderValueProcessed = Meter.CreateHistogram<double>(
-        "nop_order_value_processed",
-        unit: "USD",
-        description: "Total value of orders processed");
-
-    // delay metric
-    public static readonly Histogram<double> PaymentGatewayLatency = Meter.CreateHistogram<double>(
-        "nop_payment_gateway_latency",
+    // Search delay metric
+    public static readonly Histogram<double> SearchLatency = Meter.CreateHistogram<double>(
+        "nop_search_latency",
         unit: "ms",
-        description: "Latency of payment gateway calls");
+        description: "Latency of product searches");
 
-    // failure metric
-    public static readonly Counter<int> PaymentFailures = Meter.CreateCounter<int>(
-        "nop_payment_failures",
-        description: "Number of failed payment attempts");
+    // Empty searches metric
+    public static readonly Counter<int> EmptySearches = Meter.CreateCounter<int>(
+        "nop_empty_searches",
+        description: "Number of searches that returned zero results");
+
+    // Product views metric
+    public static readonly Counter<int> ProductViews = Meter.CreateCounter<int>(
+        "nop_product_views",
+        description: "Number of product page views");
 }
