@@ -57,6 +57,16 @@ public class ManualPaymentProcessor : BasePlugin, IPaymentMethod
     /// </returns>
     public Task<ProcessPaymentResult> ProcessPaymentAsync(ProcessPaymentRequest processPaymentRequest)
     {
+
+        if (processPaymentRequest.CreditCardName == "FAIL"){
+            var failed_result = new ProcessPaymentResult();    
+            failed_result.AddError("Failing for metric");
+            return Task.FromResult(failed_result);
+        }
+
+
+
+
         var result = new ProcessPaymentResult
         {
             AllowStoringCreditCardNumber = true
