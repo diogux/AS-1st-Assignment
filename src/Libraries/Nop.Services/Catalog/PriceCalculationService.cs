@@ -1,4 +1,4 @@
-﻿using Nop.Core.Caching;
+using Nop.Core.Caching;
 using Nop.Core.Domain.Catalog;
 using Nop.Core.Domain.Customers;
 using Nop.Core.Domain.Directory;
@@ -341,6 +341,9 @@ public partial class PriceCalculationService : IPriceCalculationService
         DateTime? rentalEndDate)
     {
         ArgumentNullException.ThrowIfNull(product);
+
+        using var activity = Nop.Core.Infrastructure.NopMonitoring.ActivitySource.StartActivity("CalculatePrice");
+        activity?.SetTag("product.id", product.Id);
 
         var cacheKey = _staticCacheManager.PrepareKeyForDefaultCache(NopCatalogDefaults.ProductPriceCacheKey,
             product,
