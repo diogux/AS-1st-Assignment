@@ -829,6 +829,11 @@ public partial class ProductService : IProductService
         bool showHidden = false,
         bool? overridePublished = null)
     {
+        using var activity = Nop.Core.Infrastructure.NopMonitoring.ActivitySource.StartActivity("SearchProducts");
+        activity?.SetTag("search.keywords", keywords);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
         //some databases don't support int.MaxValue
         if (pageSize == int.MaxValue)
             pageSize = int.MaxValue - 1;
@@ -1121,6 +1126,7 @@ public partial class ProductService : IProductService
             }
         }
 
+        IPagedList<Product> result;
         if (providerResults.Any() && orderBy == ProductSortingEnum.Position && !showHidden)
         {
             var sortedProducts = from p in productsQuery
@@ -1130,10 +1136,22 @@ public partial class ProductService : IProductService
                                  select p;
                                  
 
-            return await sortedProducts.ToPagedListAsync(pageIndex, pageSize);
+            result = await sortedProducts.ToPagedListAsync(pageIndex, pageSize);
+        }
+        else
+        {
+            result = await productsQuery.OrderBy(_localizedPropertyRepository, await _workContext.GetWorkingLanguageAsync(), orderBy).ToPagedListAsync(pageIndex, pageSize);
         }
 
-        return await productsQuery.OrderBy(_localizedPropertyRepository, await _workContext.GetWorkingLanguageAsync(), orderBy).ToPagedListAsync(pageIndex, pageSize);
+        sw.Stop();
+        Nop.Core.Infrastructure.NopMonitoring.SearchLatency.Record(sw.ElapsedMilliseconds);
+        
+        if (result.TotalCount == 0 && !string.IsNullOrEmpty(keywords))
+        {
+            Nop.Core.Infrastructure.NopMonitoring.EmptySearches.Add(1);
+        }
+
+        return result;
     }
 
     /// <summary>
