@@ -130,7 +130,6 @@ public partial class ProductController : BasePublicController
     {
         using var activity = Nop.Core.Infrastructure.NopMonitoring.ActivitySource.StartActivity("ViewProduct");
         activity?.SetTag("product.id", productId);
-        Nop.Core.Infrastructure.NopMonitoring.ProductViews.Add(1, new KeyValuePair<string, object>("product_id", productId));
 
         var product = await _productService.GetProductByIdAsync(productId);
         if (product == null || product.Deleted)

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Nop.Core.Caching;
 using Nop.Core.Domain.Catalog;
 using Nop.Core.Domain.Customers;
@@ -342,6 +343,7 @@ public partial class PriceCalculationService : IPriceCalculationService
     {
         ArgumentNullException.ThrowIfNull(product);
 
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         using var activity = Nop.Core.Infrastructure.NopMonitoring.ActivitySource.StartActivity("CalculatePrice");
         activity?.SetTag("product.id", product.Id);
 
@@ -356,6 +358,9 @@ public partial class PriceCalculationService : IPriceCalculationService
 
         //we do not cache price if this not allowed by settings or if the product is rental product
         //otherwise, it can cause memory leaks (to store all possible date period combinations)
+
+
+        // Should I disable this? '-'
         if (!_catalogSettings.CacheProductPrices || product.IsRental)
             cacheKey.CacheTime = 0;
 
@@ -364,8 +369,10 @@ public partial class PriceCalculationService : IPriceCalculationService
         decimal discountAmount;
         List<Discount> appliedDiscounts;
 
+        var isCacheMiss = false;
         (rezPriceWithoutDiscount, rezPrice, discountAmount, appliedDiscounts) = await _staticCacheManager.GetAsync(cacheKey, async () =>
         {
+            isCacheMiss = true;
             var discounts = new List<Discount>();
             var appliedDiscountAmount = decimal.Zero;
 
@@ -411,6 +418,12 @@ public partial class PriceCalculationService : IPriceCalculationService
 
             return (priceWithoutDiscount, price, appliedDiscountAmount, discounts);
         });
+
+        stopwatch.Stop();
+        Nop.Core.Infrastructure.NopMonitoring.PriceCalculationDuration.Record(stopwatch.Elapsed.TotalMilliseconds,
+            new TagList { { "result", isCacheMiss ? "miss" : "hit" } });
+
+        Nop.Core.Infrastructure.NopMonitoring.PricingCacheRequests.Add(1, new TagList { { "result", isCacheMiss ? "miss" : "hit" } });
 
         return (rezPriceWithoutDiscount, rezPrice, discountAmount, appliedDiscounts);
     }

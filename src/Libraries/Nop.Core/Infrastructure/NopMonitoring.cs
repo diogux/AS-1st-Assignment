@@ -25,8 +25,13 @@ public static class NopMonitoring
         "nop_empty_searches",
         description: "Number of searches that returned zero results");
 
-    // Product views metric
-    public static readonly Counter<int> ProductViews = Meter.CreateCounter<int>(
-        "nop_product_views",
-        description: "Number of product page views");
+    public static readonly Counter<int> PricingCacheRequests = Meter.CreateCounter<int>(
+        "nop_pricing_cache_requests",
+        description: "Number of pricing cache hits and misses");
+
+    // Price calculation duration
+    public static readonly Histogram<double> PriceCalculationDuration = Meter.CreateHistogram<double>(
+        "nop_price_calculation_duration",
+        unit: "ms",
+        description: "Duration of price calculation");
 }
