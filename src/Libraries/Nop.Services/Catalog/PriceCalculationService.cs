@@ -361,8 +361,10 @@ public partial class PriceCalculationService : IPriceCalculationService
 
 
         // Should I disable this? '-'
-        if (!_catalogSettings.CacheProductPrices || product.IsRental)
+        /*if (!_catalogSettings.CacheProductPrices || product.IsRental)*/
+        if (product.IsRental)
             cacheKey.CacheTime = 0;
+
 
         decimal rezPrice;
         decimal rezPriceWithoutDiscount;
