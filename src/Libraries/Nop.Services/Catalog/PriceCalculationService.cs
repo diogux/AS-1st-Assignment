@@ -343,7 +343,6 @@ public partial class PriceCalculationService : IPriceCalculationService
     {
         ArgumentNullException.ThrowIfNull(product);
 
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         using var activity = Nop.Core.Infrastructure.NopMonitoring.ActivitySource.StartActivity("CalculatePrice");
         activity?.SetTag("product.id", product.Id);
 
@@ -374,6 +373,7 @@ public partial class PriceCalculationService : IPriceCalculationService
         var isCacheMiss = false;
         (rezPriceWithoutDiscount, rezPrice, discountAmount, appliedDiscounts) = await _staticCacheManager.GetAsync(cacheKey, async () =>
         {
+            var calcStopwatch = System.Diagnostics.Stopwatch.StartNew();
             isCacheMiss = true;
             var discounts = new List<Discount>();
             var appliedDiscountAmount = decimal.Zero;
@@ -418,12 +418,11 @@ public partial class PriceCalculationService : IPriceCalculationService
             if (priceWithoutDiscount < decimal.Zero)
                 priceWithoutDiscount = decimal.Zero;
 
+            calcStopwatch.Stop();
+            Nop.Core.Infrastructure.NopMonitoring.PriceCalculationDuration.Record(calcStopwatch.Elapsed.TotalMilliseconds);
+
             return (priceWithoutDiscount, price, appliedDiscountAmount, discounts);
         });
-
-        stopwatch.Stop();
-        Nop.Core.Infrastructure.NopMonitoring.PriceCalculationDuration.Record(stopwatch.Elapsed.TotalMilliseconds,
-            new TagList { { "result", isCacheMiss ? "miss" : "hit" } });
 
         Nop.Core.Infrastructure.NopMonitoring.PricingCacheRequests.Add(1, new TagList { { "result", isCacheMiss ? "miss" : "hit" } });
 
