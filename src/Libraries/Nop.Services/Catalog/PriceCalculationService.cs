@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using OpenTelemetry.Trace;
 using Nop.Core.Caching;
 using Nop.Core.Domain.Catalog;
 using Nop.Core.Domain.Customers;
@@ -346,87 +347,99 @@ public partial class PriceCalculationService : IPriceCalculationService
         using var activity = Nop.Core.Infrastructure.NopMonitoring.ActivitySource.StartActivity("CalculatePrice");
         activity?.SetTag("product.id", product.Id);
 
-        var cacheKey = _staticCacheManager.PrepareKeyForDefaultCache(NopCatalogDefaults.ProductPriceCacheKey,
-            product,
-            overriddenProductPrice,
-            additionalCharge,
-            includeDiscounts,
-            quantity,
-            await _customerService.GetCustomerRoleIdsAsync(customer),
-            store);
-
-        //we do not cache price if this not allowed by settings or if the product is rental product
-        //otherwise, it can cause memory leaks (to store all possible date period combinations)
-
-
-        // Should I disable this? '-'
-        /*if (!_catalogSettings.CacheProductPrices || product.IsRental)*/
-        if (product.IsRental)
-            cacheKey.CacheTime = 0;
-
-
-        decimal rezPrice;
-        decimal rezPriceWithoutDiscount;
-        decimal discountAmount;
-        List<Discount> appliedDiscounts;
-
-        var isCacheMiss = false;
-        (rezPriceWithoutDiscount, rezPrice, discountAmount, appliedDiscounts) = await _staticCacheManager.GetAsync(cacheKey, async () =>
+        try
         {
-            var calcStopwatch = System.Diagnostics.Stopwatch.StartNew();
-            isCacheMiss = true;
-            var discounts = new List<Discount>();
-            var appliedDiscountAmount = decimal.Zero;
+            var cacheKey = _staticCacheManager.PrepareKeyForDefaultCache(NopCatalogDefaults.ProductPriceCacheKey,
+                product,
+                overriddenProductPrice,
+                additionalCharge,
+                includeDiscounts,
+                quantity,
+                await _customerService.GetCustomerRoleIdsAsync(customer),
+                store);
 
-            //initial price
-            var price = overriddenProductPrice ?? product.Price;
+            //we do not cache price if this not allowed by settings or if the product is rental product
+            //otherwise, it can cause memory leaks (to store all possible date period combinations)
 
-            //tier prices
-            var tierPrice = await _productService.GetPreferredTierPriceAsync(product, customer, store, quantity);
 
-            if (tierPrice != null)
-                price = tierPrice.Price;
-
-            //additional charge
-            price += additionalCharge;
-
-            //rental products
+            // Should I disable this? '-'
+            /*if (!_catalogSettings.CacheProductPrices || product.IsRental)*/
             if (product.IsRental)
+                cacheKey.CacheTime = 0;
+
+
+            decimal rezPrice;
+            decimal rezPriceWithoutDiscount;
+            decimal discountAmount;
+            List<Discount> appliedDiscounts;
+
+            var isCacheMiss = false;
+            (rezPriceWithoutDiscount, rezPrice, discountAmount, appliedDiscounts) = await _staticCacheManager.GetAsync(cacheKey, async () =>
             {
-                if (rentalStartDate.HasValue && rentalEndDate.HasValue)
-                    price *= _productService.GetRentalPeriods(product, rentalStartDate.Value, rentalEndDate.Value);
-            }
+                var calcStopwatch = System.Diagnostics.Stopwatch.StartNew();
+                isCacheMiss = true;
+                var discounts = new List<Discount>();
+                var appliedDiscountAmount = decimal.Zero;
 
-            var priceWithoutDiscount = price;
+                //initial price
+                var price = overriddenProductPrice ?? product.Price;
 
-            if (includeDiscounts)
-            {
-                //discount
-                var (tmpDiscountAmount, tmpAppliedDiscounts) = await GetDiscountAmountAsync(product, customer, price);
-                price -= tmpDiscountAmount;
+                //tier prices
+                var tierPrice = await _productService.GetPreferredTierPriceAsync(product, customer, store, quantity);
 
-                if (tmpAppliedDiscounts?.Any() ?? false)
+                if (tierPrice != null)
+                    price = tierPrice.Price;
+
+                //additional charge
+                price += additionalCharge;
+
+                //rental products
+                if (product.IsRental)
                 {
-                    discounts.AddRange(tmpAppliedDiscounts);
-                    appliedDiscountAmount = tmpDiscountAmount;
+                    if (rentalStartDate.HasValue && rentalEndDate.HasValue)
+                        price *= _productService.GetRentalPeriods(product, rentalStartDate.Value, rentalEndDate.Value);
                 }
-            }
 
-            if (price < decimal.Zero)
-                price = decimal.Zero;
+                var priceWithoutDiscount = price;
 
-            if (priceWithoutDiscount < decimal.Zero)
-                priceWithoutDiscount = decimal.Zero;
+                if (includeDiscounts)
+                {
+                    //discount
+                    var (tmpDiscountAmount, tmpAppliedDiscounts) = await GetDiscountAmountAsync(product, customer, price);
+                    price -= tmpDiscountAmount;
 
-            calcStopwatch.Stop();
-            Nop.Core.Infrastructure.NopMonitoring.PriceCalculationDuration.Record(calcStopwatch.Elapsed.TotalMilliseconds);
+                    if (tmpAppliedDiscounts?.Any() ?? false)
+                    {
+                        discounts.AddRange(tmpAppliedDiscounts);
+                        appliedDiscountAmount = tmpDiscountAmount;
+                    }
+                }
 
-            return (priceWithoutDiscount, price, appliedDiscountAmount, discounts);
-        });
+                if (price < decimal.Zero)
+                    price = decimal.Zero;
 
-        Nop.Core.Infrastructure.NopMonitoring.PricingCacheRequests.Add(1, new TagList { { "result", isCacheMiss ? "miss" : "hit" } });
+                if (priceWithoutDiscount < decimal.Zero)
+                    priceWithoutDiscount = decimal.Zero;
 
-        return (rezPriceWithoutDiscount, rezPrice, discountAmount, appliedDiscounts);
+                calcStopwatch.Stop();
+                Nop.Core.Infrastructure.NopMonitoring.PriceCalculationDuration.Record(calcStopwatch.Elapsed.TotalMilliseconds, 
+                    new("status", "success"), new("product.id", product.Id.ToString()));
+
+                return (priceWithoutDiscount, price, appliedDiscountAmount, discounts);
+            });
+
+            Nop.Core.Infrastructure.NopMonitoring.PricingCacheRequests.Add(1, new TagList { { "result", isCacheMiss ? "miss" : "hit" } });
+
+            return (rezPriceWithoutDiscount, rezPrice, discountAmount, appliedDiscounts);
+        }
+        catch (Exception ex)
+        {
+            activity?.SetTag("error", true);
+            activity?.RecordException(ex);
+            Nop.Core.Infrastructure.NopMonitoring.PriceCalculationDuration.Record(0, 
+                new("status", "error"), new("product.id", product.Id.ToString()));
+            throw;
+        }
     }
 
     /// <summary>

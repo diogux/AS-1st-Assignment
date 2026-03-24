@@ -34,4 +34,9 @@ public static class NopMonitoring
         "nop_price_calculation_duration",
         unit: "ms",
         description: "Duration of price calculation");
+
+    // ViewProduct requests counter
+    public static readonly Counter<int> ViewProductRequests = Meter.CreateCounter<int>(
+        "nop_viewproduct_requests",
+        description: "Number of product view requests");
 }

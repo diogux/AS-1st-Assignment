@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using OpenTelemetry.Trace;
 using Nop.Core;
 using Nop.Core.Domain.Catalog;
 using Nop.Core.Domain.Localization;
@@ -137,6 +138,7 @@ public partial class ProductController : BasePublicController
             if (product == null || product.Deleted)
             {
                 activity?.SetTag("http.status_code", 404);
+                Nop.Core.Infrastructure.NopMonitoring.ViewProductRequests.Add(1, new("status_code", "404"), new("product.id", productId.ToString()));
                 return InvokeHttp404();
             }
 
@@ -155,6 +157,7 @@ public partial class ProductController : BasePublicController
             if (notAvailable && !hasAdminAccess)
             {
                 activity?.SetTag("http.status_code", 404);
+                Nop.Core.Infrastructure.NopMonitoring.ViewProductRequests.Add(1, new("status_code", "404"), new("product.id", productId.ToString()));
                 return InvokeHttp404();
             }
 
@@ -211,6 +214,7 @@ public partial class ProductController : BasePublicController
             var productTemplateViewPath = await _productModelFactory.PrepareProductTemplateViewPathAsync(product);
 
             activity?.SetTag("http.status_code", 200);
+            Nop.Core.Infrastructure.NopMonitoring.ViewProductRequests.Add(1, new("status_code", "200"), new("product.id", productId.ToString()));
             return View(productTemplateViewPath, model);
         }
         catch (Exception ex)
@@ -218,6 +222,7 @@ public partial class ProductController : BasePublicController
             activity?.SetTag("http.status_code", 500);
             activity?.SetTag("error", true);
             activity?.RecordException(ex);
+            Nop.Core.Infrastructure.NopMonitoring.ViewProductRequests.Add(1, new("status_code", "500"), new("product.id", productId.ToString()));
             throw;
         }
     }
