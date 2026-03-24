@@ -49,6 +49,14 @@ public static class OpenTelemetryServiceCollectionExtensions
                 metrics
                     .SetResourceBuilder(resourceBuilder)
                     .AddMeter(NopMonitoring.MeterName)
+                    .AddView("nop_price_calculation_duration", new ExplicitBucketHistogramConfiguration
+                    {
+                        Boundaries = [0.5, 1, 2, 3, 4, 5, 7.5, 10, 20, 50, 100, 250, 500]
+                    })
+                    .AddView("nop_search_latency", new ExplicitBucketHistogramConfiguration
+                    {
+                        Boundaries = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000]
+                    })
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
