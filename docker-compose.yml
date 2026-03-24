@@ -57,6 +57,8 @@ services:
             - GF_AUTH_DISABLE_LOGIN_FORM=true
         volumes:
             - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+            - ./grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml
+            - ./grafana-dashboards:/etc/grafana/provisioning/dashboards
 
 volumes:
   nopcommerce_data:            
