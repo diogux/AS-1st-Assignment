@@ -131,78 +131,95 @@ public partial class ProductController : BasePublicController
         using var activity = Nop.Core.Infrastructure.NopMonitoring.ActivitySource.StartActivity("ViewProduct");
         activity?.SetTag("product.id", productId);
 
-        var product = await _productService.GetProductByIdAsync(productId);
-        if (product == null || product.Deleted)
-            return InvokeHttp404();
-
-        var notAvailable =
-            //published?
-            (!product.Published && !_catalogSettings.AllowViewUnpublishedProductPage) ||
-            //ACL (access control list) 
-            !await _aclService.AuthorizeAsync(product) ||
-            //Store mapping
-            !await _storeMappingService.AuthorizeAsync(product) ||
-            //availability dates
-            !_productService.ProductIsAvailable(product);
-        //Check whether the current user has a "Manage products" permission (usually a store owner)
-        //We should allows him (her) to use "Preview" functionality
-        var hasAdminAccess = await _permissionService.AuthorizeAsync(StandardPermission.Security.ACCESS_ADMIN_PANEL) && await _permissionService.AuthorizeAsync(StandardPermission.Catalog.PRODUCTS_VIEW);
-        if (notAvailable && !hasAdminAccess)
-            return InvokeHttp404();
-
-        //visible individually?
-        if (!product.VisibleIndividually)
+        try
         {
-            //is this one an associated products?
-            var parentGroupedProduct = await _productService.GetProductByIdAsync(product.ParentGroupedProductId);
-            if (parentGroupedProduct == null)
-                return RedirectToRoute(NopRouteNames.General.HOMEPAGE);
+            var product = await _productService.GetProductByIdAsync(productId);
+            if (product == null || product.Deleted)
+            {
+                activity?.SetTag("http.status_code", 404);
+                return InvokeHttp404();
+            }
 
-            var productUrl = await _nopUrlHelper.RouteGenericUrlAsync(parentGroupedProduct);
-            return LocalRedirectPermanent(productUrl);
+            var notAvailable =
+                //published?
+                (!product.Published && !_catalogSettings.AllowViewUnpublishedProductPage) ||
+                //ACL (access control list) 
+                !await _aclService.AuthorizeAsync(product) ||
+                //Store mapping
+                !await _storeMappingService.AuthorizeAsync(product) ||
+                //availability dates
+                !_productService.ProductIsAvailable(product);
+            //Check whether the current user has a "Manage products" permission (usually a store owner)
+            //We should allows him (her) to use "Preview" functionality
+            var hasAdminAccess = await _permissionService.AuthorizeAsync(StandardPermission.Security.ACCESS_ADMIN_PANEL) && await _permissionService.AuthorizeAsync(StandardPermission.Catalog.PRODUCTS_VIEW);
+            if (notAvailable && !hasAdminAccess)
+            {
+                activity?.SetTag("http.status_code", 404);
+                return InvokeHttp404();
+            }
+
+            //visible individually?
+            if (!product.VisibleIndividually)
+            {
+                //is this one an associated products?
+                var parentGroupedProduct = await _productService.GetProductByIdAsync(product.ParentGroupedProductId);
+                if (parentGroupedProduct == null)
+                    return RedirectToRoute(NopRouteNames.General.HOMEPAGE);
+
+                var productUrl = await _nopUrlHelper.RouteGenericUrlAsync(parentGroupedProduct);
+                return LocalRedirectPermanent(productUrl);
+            }
+
+            //update existing shopping cart or wishlist  item?
+            ShoppingCartItem updatecartitem = null;
+            if (_shoppingCartSettings.AllowCartItemEditing && updatecartitemid > 0)
+            {
+                var productUrl = await _nopUrlHelper.RouteGenericUrlAsync(product);
+                var store = await _storeContext.GetCurrentStoreAsync();
+                var cart = await _shoppingCartService.GetShoppingCartAsync(await _workContext.GetCurrentCustomerAsync(), storeId: store.Id, customWishlistId: customwishlistid);
+                updatecartitem = cart.FirstOrDefault(x => x.Id == updatecartitemid);
+
+                //not found?
+                if (updatecartitem == null)
+                    return LocalRedirect(productUrl);
+
+                //is it this product?
+                if (product.Id != updatecartitem.ProductId)
+                    return LocalRedirect(productUrl);
+            }
+
+            //save as recently viewed
+            await _recentlyViewedProductsService.AddProductToRecentlyViewedListAsync(product.Id);
+
+            //display "edit" (manage) link
+            if (await _permissionService.AuthorizeAsync(StandardPermission.Security.ACCESS_ADMIN_PANEL) &&
+                await _permissionService.AuthorizeAsync(StandardPermission.Catalog.PRODUCTS_VIEW))
+            {
+                //a vendor should have access only to his products
+                var currentVendor = await _workContext.GetCurrentVendorAsync();
+                if (currentVendor == null || currentVendor.Id == product.VendorId)
+                    DisplayEditLink(Url.Action("Edit", "Product", new { id = product.Id, area = AreaNames.ADMIN }));
+            }
+
+            //activity log
+            await _customerActivityService.InsertActivityAsync("PublicStore.ViewProduct",
+                string.Format(await _localizationService.GetResourceAsync("ActivityLog.PublicStore.ViewProduct"), product.Name), product);
+
+            //model
+            var model = await _productModelFactory.PrepareProductDetailsModelAsync(product, updatecartitem, false);
+            //template
+            var productTemplateViewPath = await _productModelFactory.PrepareProductTemplateViewPathAsync(product);
+
+            activity?.SetTag("http.status_code", 200);
+            return View(productTemplateViewPath, model);
         }
-
-        //update existing shopping cart or wishlist  item?
-        ShoppingCartItem updatecartitem = null;
-        if (_shoppingCartSettings.AllowCartItemEditing && updatecartitemid > 0)
+        catch (Exception ex)
         {
-            var productUrl = await _nopUrlHelper.RouteGenericUrlAsync(product);
-            var store = await _storeContext.GetCurrentStoreAsync();
-            var cart = await _shoppingCartService.GetShoppingCartAsync(await _workContext.GetCurrentCustomerAsync(), storeId: store.Id, customWishlistId: customwishlistid);
-            updatecartitem = cart.FirstOrDefault(x => x.Id == updatecartitemid);
-
-            //not found?
-            if (updatecartitem == null)
-                return LocalRedirect(productUrl);
-
-            //is it this product?
-            if (product.Id != updatecartitem.ProductId)
-                return LocalRedirect(productUrl);
+            activity?.SetTag("http.status_code", 500);
+            activity?.SetTag("error", true);
+            activity?.RecordException(ex);
+            throw;
         }
-
-        //save as recently viewed
-        await _recentlyViewedProductsService.AddProductToRecentlyViewedListAsync(product.Id);
-
-        //display "edit" (manage) link
-        if (await _permissionService.AuthorizeAsync(StandardPermission.Security.ACCESS_ADMIN_PANEL) &&
-            await _permissionService.AuthorizeAsync(StandardPermission.Catalog.PRODUCTS_VIEW))
-        {
-            //a vendor should have access only to his products
-            var currentVendor = await _workContext.GetCurrentVendorAsync();
-            if (currentVendor == null || currentVendor.Id == product.VendorId)
-                DisplayEditLink(Url.Action("Edit", "Product", new { id = product.Id, area = AreaNames.ADMIN }));
-        }
-
-        //activity log
-        await _customerActivityService.InsertActivityAsync("PublicStore.ViewProduct",
-            string.Format(await _localizationService.GetResourceAsync("ActivityLog.PublicStore.ViewProduct"), product.Name), product);
-
-        //model
-        var model = await _productModelFactory.PrepareProductDetailsModelAsync(product, updatecartitem, false);
-        //template
-        var productTemplateViewPath = await _productModelFactory.PrepareProductTemplateViewPathAsync(product);
-
-        return View(productTemplateViewPath, model);
     }
 
     [HttpPost]

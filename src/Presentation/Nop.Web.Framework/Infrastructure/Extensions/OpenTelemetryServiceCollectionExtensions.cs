@@ -28,15 +28,13 @@ public static class OpenTelemetryServiceCollectionExtensions
                 tracing
                     .SetResourceBuilder(resourceBuilder)
                     .AddSource(NopMonitoring.ActivitySourceName)
-                    .AddAspNetCoreInstrumentation()
-                    /*options =>*/
-                    /*{*/
-                    /*    options.EnrichWithHttpRequest = (activity, request) =>*/
-                    /*    {*/
-                    /*        // i dont think this is necessary*/
-                    /*        activity.SetTag("http.status_code", request.StatusCode);*/
-                    /*    };*/
-                    /*})*/
+                    .AddAspNetCoreInstrumentation(options =>
+                    {
+                        options.EnrichWithHttpResponse = (activity, response) =>
+                        {
+                            activity.SetTag("http.status_code", response.StatusCode);
+                        };
+                    })
                     .AddHttpClientInstrumentation()
                     .AddSqlClientInstrumentation()
                     .AddOtlpExporter(options =>
