@@ -1146,7 +1146,9 @@ public partial class ProductService : IProductService
         sw.Stop();
         Nop.Core.Infrastructure.NopMonitoring.SearchLatency.Record(sw.ElapsedMilliseconds);
         
-        if (result.TotalCount == 0 && !string.IsNullOrEmpty(keywords))
+        // Only count empty searches for actual user searches (pageSize > 1)
+        // Skip price range queries (pageSize = 1) to avoid duplicate counting
+        if (result.TotalCount == 0 && !string.IsNullOrEmpty(keywords) && pageSize > 1)
         {
             Nop.Core.Infrastructure.NopMonitoring.EmptySearches.Add(1);
         }
