@@ -830,7 +830,7 @@ public partial class ProductService : IProductService
         bool? overridePublished = null)
     {
         using var activity = Nop.Core.Infrastructure.NopMonitoring.ActivitySource.StartActivity("SearchProducts");
-        activity?.SetTag("search.keywords", keywords);
+        activity?.SetTag("search.keywords", Nop.Core.Infrastructure.PiiRedactor.RedactEmails(keywords));
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
