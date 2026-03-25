@@ -2,7 +2,7 @@
 
 ## What Helped
 
-nopCommerce's layered architecture made instrumentation clean. Because business logic lives in the service layer and everything goes through it, three instrumentation points were enough to cover the entire flow. In a controller-heavy codebase that would require more spans.
+nopCommerce's layered architecture made instrumentation easier. Because business logic lives in the service layer and everything goes through it, three instrumentation points were enough to cover the flow.
 
 DI being pervasive also helped. Adding `services.AddNopOpenTelemetry(...)` at startup was all that was necessary to wire everything up. 
 
@@ -15,8 +15,10 @@ The pricing cache was the hardest part. `IStaticCacheManager.GetAsync` doesn't s
 
 ## Things I would change
 
-The cache interface is the most valuable fix: returning hit/miss metadata from `GetAsync` would eliminate the lambda hack and make cache visibility automatic for any future instrumentation work.
-Refactoring `GetFinalPriceAsync` into smaller methods would be ideal as well.
+The cache interface is a important fix: returning hit/miss metadata from `GetAsync` would eliminate the lambda "hack", and make the cache overall easier to monitor.
+
+Refactoring `GetFinalPriceAsync` into smaller methods would also be a good idea.
+
 Also, depending if the flow is supposed to change, maybe instrumenting the EventPublisher would be a good idea to get visibility on event handlers execution time.
 
 ## Changes I've Made
