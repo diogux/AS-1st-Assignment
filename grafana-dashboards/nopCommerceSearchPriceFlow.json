@@ -253,13 +253,13 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(nop_price_calculation_duration_milliseconds_bucket[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(nop_price_calculation_duration_milliseconds_bucket[$__rate_interval])) by (le))",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "P99 Pricing Calculation Latency",
+      "title": "P95 Pricing Calculation Latency",
       "type": "stat"
     },
     {
@@ -441,13 +441,13 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum(rate(nop_search_latency_milliseconds_bucket[$__rate_interval])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(nop_search_latency_milliseconds_bucket[$__rate_interval])) by (le))",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "P99 Search Latency",
+      "title": "P95 Search Latency",
       "type": "stat"
     },
     {
@@ -936,7 +936,7 @@
     "list": []
   },
   "time": {
-    "from": "now-15m",
+    "from": "now-5m",
     "to": "now"
   },
   "timepicker": {},

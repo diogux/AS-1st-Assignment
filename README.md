@@ -79,3 +79,15 @@ k6 run loadtest.js
 3. `nop_price_calculation_duration` - Pricing calculation histogram
 4. `nop_pricing_cache_requests` - Cache hit/miss counter
 5. `nop_viewproduct_requests` - Product view counter
+
+---
+
+## PII
+
+In this specific flow, no personally identifiable information (PII) is collected or exposed in the traces or metrics. The instrumentation focuses on performance and cache visibility without capturing user data. However, if the user tries to search an email address for example, it would be redacted to prevent expousre. (Using regex)
+
+---
+
+## Critique
+
+For a detailed analysis and critique of this implementation, see [CRITIQUE.md](CRITIQUE.md).
